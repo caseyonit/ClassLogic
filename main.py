@@ -1,5 +1,7 @@
 import json
 import difflib
+import matplotlib.pyplot as plt
+import networkx as nx
 
 # Load the JSON data
 with open('class.json', 'r') as f:
@@ -36,16 +38,48 @@ def compute_similarity(p1, p2):
 def fuzzy_find_name(input_name):
     matches = difflib.get_close_matches(input_name.lower(), [normalize(name) for name in all_names], n=1, cutoff=0.6)
     if matches:
-        # Return the original name (not normalized)
         for name in all_names:
             if normalize(name) == matches[0]:
                 return name
     return None
 
+# Generate a network graph
+def generate_similarity_graph(base_person_name, top_matches):
+    G = nx.Graph()
+    G.add_node(base_person_name)
+
+    for name, score, percent in top_matches:
+        G.add_node(name)
+        G.add_edge(base_person_name, name, weight=score)
+
+    pos = nx.spring_layout(G, seed=42)
+    edge_labels = nx.get_edge_attributes(G, 'weight')
+
+    plt.figure(figsize=(8, 6))
+    nx.draw(G, pos, with_labels=True, node_color='skyblue', node_size=2000,
+            font_size=10, font_weight='bold', edge_color='gray')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+    plt.title(f"Top 5 Similar People to {base_person_name}")
+    plt.tight_layout()
+    plt.show()
+
+# Generate histogram of all similarity percentages
+def generate_similarity_histogram(similarities, base_name):
+    percentages = [percent for _, _, percent in similarities]
+
+    plt.figure(figsize=(8, 4))
+    plt.hist(percentages, bins=10, color='lightgreen', edgecolor='black')
+    plt.title(f"Similarity Distribution for {base_name}")
+    plt.xlabel("Similarity Percentage")
+    plt.ylabel("Number of People")
+    plt.grid(True, axis='y', linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
+
 # Main CLI function
 def find_most_similar_person():
     print("Camp Buddy Matcher")
-    print("Type a name to find their most similar campmate (even with typos). Type 'exit' to quit.\n")
+    print("Type a name to find their most similar campmates (top 5). Type 'exit' to quit.\n")
 
     while True:
         name_input = input("Enter a name: ").strip()
@@ -59,21 +93,25 @@ def find_most_similar_person():
             continue
 
         person = name_to_person[matched_name]
-        best_match = None
-        best_score = -1
-        best_percent = 0.0
+        similarities = []
 
         for other in normalized_data:
             if other['name'] == person['name']:
                 continue
             score, percent = compute_similarity(person, other)
-            if score > best_score:
-                best_score = score
-                best_percent = percent
-                best_match = other['name']
+            similarities.append((other['name'], score, percent))
 
-        print(f"\n {matched_name} is most similar to {best_match}")
-        print(f"Similarity Score: {best_score}/{len(fields_to_compare)} ({best_percent}%)\n")
+        # Sort and take top 5 matches
+        top_matches = sorted(similarities, key=lambda x: x[1], reverse=True)[:5]
+
+        print(f"\nTop 5 matches for {matched_name}:")
+        for i, (name, score, percent) in enumerate(top_matches, 1):
+            print(f"{i}. {name} — Score: {score}/{len(fields_to_compare)} ({percent}%)")
+
+        # Graph and histogram
+        generate_similarity_graph(matched_name, top_matches)
+        generate_similarity_histogram(similarities, matched_name)
+        print()
 
 # Run the CLI
 if __name__ == "__main__":
